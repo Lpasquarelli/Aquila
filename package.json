@@ -5,11 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "tsc -p tsconfig.json",
+    "lint": "eslint src scripts",
+    "format": "prettier --write src scripts package.json tsconfig.json eslint.config.mjs",
+    "format:check": "prettier --check src scripts package.json tsconfig.json eslint.config.mjs",
     "start": "node dist/server.js",
     "keys:dev": "bash scripts/generate-dev-keys.sh",
     "keys:m2m": "bash scripts/generate-m2m-keys.sh",
     "db:seed:demo": "tsx scripts/seed-demo-user.ts",
+    "session:stream-info": "tsx scripts/show-session-stream.ts",
     "prestart": "npm run build"
   },
   "dependencies": {
@@ -18,6 +23,8 @@
     "@fastify/rate-limit": "^10.2.1",
     "@fastify/swagger": "^9.9.2",
     "@fastify/swagger-ui": "^6.1.2",
+    "@nats-io/jetstream": "^3.4.0",
+    "@nats-io/transport-node": "^3.4.0",
     "argon2": "^0.41.1",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1",
@@ -27,10 +34,15 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/mssql": "^12.3.0",
     "@types/node": "^22.13.4",
+    "eslint": "^10.14.0",
+    "prettier": "^3.9.10",
+    "prettier-plugin-organize-imports": "^4.3.0",
     "tsx": "^4.19.3",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.72.1"
   },
   "overrides": {
     "glob": "^14.0.3",

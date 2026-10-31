@@ -24,9 +24,9 @@ Auth replicas need the SQL pool and private signing key. Resource replicas need 
 
 ```text
 Protected user request: verify EdDSA access JWT -> one Redis session lookup -> handler
-Login: SQL account read -> bounded Argon2id verify -> sign tokens -> create Redis session
-Refresh: verify refresh JWT -> Redis session read -> SQL active-account read -> sign -> atomic Redis rotation
-Logout: atomic Redis delete -> acknowledge only after Redis confirms
+Login: SQL account read -> bounded Argon2id verify -> sign tokens -> create Redis session -> publish issued-token proof -> wait for consumer apply
+Refresh: verify refresh JWT -> Redis session read -> SQL active-account read -> sign -> atomic Redis rotation -> publish issued-token proof -> wait for consumer apply
+Logout: durable revocation event -> wait for consumer projection acknowledgement -> Redis delete -> acknowledge
 ```
 
 Refresh JWTs use a distinct `typ` and `token_use`, a random 256-bit `jti`, and a signed generation number. Redis stores only the current `jti` hash. One atomic Lua transition advances the generation; a cryptographically valid token from an older generation revokes that session. No per-refresh history grows in SQL or Redis. A refresh response lost after rotation can require sign-in again; retrying the old token is treated as replay.
@@ -42,6 +42,7 @@ Session Redis uses `noeviction` so memory pressure cannot silently evict authori
 ## Failure behavior
 
 - Redis unavailable or command deadline exceeded: protected requests, login session creation, refresh, and logout fail closed with 503. There is no SQL or process-memory fallback.
+- Session-event broker or consumer projection unavailable: token issuance, early session invalidation, and logout return 503. Successful login/refresh and logout wait for the consumer's applied acknowledgement.
 - Session absent or expired: 401 and reauthentication. Logout returns success only after Redis deletion succeeds.
 - SQL unavailable: login and refresh return 503; existing protected requests continue through Redis without SQL.
 - Redis command failures open a short per-process circuit after three failures. The circuit returns 503, then allows one bounded probe after one second.
@@ -63,12 +64,12 @@ Access JWTs carry roles for five minutes. Disabling a user or changing roles doe
 | Factory | `createContainer()` constructs role-specific clients and services; `createApp()` registers the role's HTTP surface. |
 | Repository | `IUserRepository` and `ISessionRepository` separate SQL account reads and Redis live sessions from application code. |
 | Middleware pipeline | Helmet, cookies, distributed rate limits, origin checks, JWT verification, then Redis session authorization. |
-| Dependency injection | `src/di/container.ts` composes repositories, token service, password hasher, and feature services. |
+| Dependency injection | `src/config/container.ts` owns shared process resources; `identity.container.ts` and `m2m.container.ts` compose feature adapters and services. |
 | Command | Login, refresh, logout, and M2M token issue are explicit operations. |
 | Circuit breaker | Redis command gates protect session, rate-limit, and M2M replay operations; failures remain closed and return 503. |
-| Module boundaries | Identity and M2M own application, HTTP, and infrastructure code; routes map paths to controller methods. |
+| Layer boundaries | `src/routes`, `src/controller`, `src/services`, `src/interfaces`, `src/repositories`, and `src/clients` separate HTTP, behavior, contracts, and external systems. |
 | Async wrapper / Proxy | Not added: Fastify already handles async route errors, and there is no downstream business API client to wrap. |
-| Event emitter / Pub-Sub | Not added: no in-process event is used for correctness or logout. Durable audit fan-out can be added through an outbox when required. |
+| Durable event stream | NATS JetStream carries session activation/issued-token proofs and revocations. Aquila waits for a consumer-applied acknowledgement; Core NATS replies alone are not the event record. |
 
 ## Deployment steps
 
