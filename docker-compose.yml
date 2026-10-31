@@ -1,0 +1,22 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
+    ports: ["127.0.0.1:6381:6379"]
+    volumes: [redis_sessions_data:/data]
+  redis-rate-limit:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    ports: ["127.0.0.1:6380:6379"]
+    volumes: [redis_rate_limit_data:/data]
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "ChangeThis_Local_Only!42"
+    ports: ["127.0.0.1:1434:1433"]
+    volumes: [sql_data:/var/opt/mssql]
+volumes:
+  redis_sessions_data:
+  redis_rate_limit_data:
+  sql_data:
